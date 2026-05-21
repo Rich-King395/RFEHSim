@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import numpy as np
@@ -46,6 +46,34 @@ class AppTrafficConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SmallScaleFadingConfig:
+    """Flat small-scale fading settings for the wireless channel."""
+
+    enabled: bool
+    model: Literal["none", "rayleigh", "rician"]
+    k_factor_linear: float
+    coherence_time_s: float
+    doppler_hz: float | None
+    normalize_mean: bool
+    per_source_independent: bool
+    random_phase: bool
+
+
+def default_small_scale_fading_config() -> SmallScaleFadingConfig:
+    """Return the default large-scale-only channel behavior."""
+    return SmallScaleFadingConfig(
+        enabled=False,
+        model="none",
+        k_factor_linear=0.0,
+        coherence_time_s=0.2,
+        doppler_hz=None,
+        normalize_mean=True,
+        per_source_independent=True,
+        random_phase=True,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class ChannelConfig:
     """Log-distance path loss channel settings."""
 
@@ -53,6 +81,9 @@ class ChannelConfig:
     reference_distance_m: float
     shadowing_db: float
     ambient_power_w: float
+    small_scale: SmallScaleFadingConfig = field(
+        default_factory=default_small_scale_fading_config
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,5 +159,6 @@ class SimResult:
     boost_state: np.ndarray
     capacitor_energy_j: np.ndarray
     net_capacitor_power_w: np.ndarray
+    small_scale_gain_by_source: dict[str, np.ndarray]
     traffic_bursts: list[TrafficBurst]
     tx_events: list[TxEvent]

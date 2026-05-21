@@ -15,10 +15,11 @@ from rfeh_sim.models import (
     FullConfig,
     HarvesterConfig,
     ScenarioConfig,
+    SmallScaleFadingConfig,
     SimulationConfig,
     TransmitterConfig,
 )
-from rfeh_sim.units import dbm_to_watt
+from rfeh_sim.units import db_to_linear, dbm_to_watt
 
 
 def load_config(path: str | Path) -> FullConfig:
@@ -53,6 +54,7 @@ def load_config(path: str | Path) -> FullConfig:
     app_traffic_raw = _optional_mapping(raw, "app_traffic")
     transmitter_raw = _require_mapping(raw, "transmitter")
     channel_raw = _require_mapping(raw, "channel")
+    small_scale_raw = _optional_mapping(channel_raw, "small_scale")
     harvester_raw = _require_mapping(raw, "harvester")
     boost_raw = _optional_mapping(harvester_raw, "boost")
 
@@ -89,6 +91,7 @@ def load_config(path: str | Path) -> FullConfig:
             ambient_power_w=dbm_to_watt(
                 _required_float(channel_raw, "channel", "ambient_power_dbm")
             ),
+            small_scale=_load_small_scale_config(small_scale_raw),
         ),
         harvester=HarvesterConfig(
             capacitance_f=_required_float(
@@ -231,6 +234,79 @@ def _load_boost_config(raw: dict[str, Any]) -> BoostConfig:
     return boost
 
 
+def _load_small_scale_config(raw: dict[str, Any]) -> SmallScaleFadingConfig:
+    """Load optional flat small-scale fading channel settings."""
+    enabled = _optional_bool(raw, "channel.small_scale", "enabled", False)
+    model = str(raw.get("model", "none"))
+    if model not in {"none", "rayleigh", "rician"}:
+        raise ValueError(
+            "Configuration field 'channel.small_scale.model' must be 'none', "
+            "'rayleigh', or 'rician'."
+        )
+
+    doppler_hz = _optional_nullable_float(
+        raw,
+        "channel.small_scale",
+        "doppler_hz",
+        None,
+    )
+    coherence_time_s = _optional_nullable_float(
+        raw,
+        "channel.small_scale",
+        "coherence_time_s",
+        None,
+    )
+    if coherence_time_s is None:
+        if doppler_hz is not None:
+            if doppler_hz <= 0.0:
+                raise ValueError(
+                    "Configuration field 'channel.small_scale.doppler_hz' "
+                    "must be positive when provided."
+                )
+            coherence_time_s = 0.423 / doppler_hz
+        else:
+            coherence_time_s = 0.2
+    if coherence_time_s <= 0.0:
+        raise ValueError(
+            "Configuration field 'channel.small_scale.coherence_time_s' "
+            "must be positive."
+        )
+
+    k_factor_db = _optional_float(raw, "channel.small_scale", "k_factor_db", 0.0)
+    k_factor_linear = db_to_linear(k_factor_db)
+    if k_factor_linear < 0.0:
+        raise ValueError(
+            "Configuration field 'channel.small_scale.k_factor_db' must convert "
+            "to a non-negative linear K factor."
+        )
+
+    return SmallScaleFadingConfig(
+        enabled=enabled,
+        model=model,
+        k_factor_linear=k_factor_linear,
+        coherence_time_s=coherence_time_s,
+        doppler_hz=doppler_hz,
+        normalize_mean=_optional_bool(
+            raw,
+            "channel.small_scale",
+            "normalize_mean",
+            True,
+        ),
+        per_source_independent=_optional_bool(
+            raw,
+            "channel.small_scale",
+            "per_source_independent",
+            True,
+        ),
+        random_phase=_optional_bool(
+            raw,
+            "channel.small_scale",
+            "random_phase",
+            True,
+        ),
+    )
+
+
 def _required_float(raw: dict[str, Any], section: str, field: str) -> float:
     """Read a required finite floating-point field with a clear error."""
     if field not in raw:
@@ -256,6 +332,18 @@ def _optional_float(
 ) -> float:
     """Read an optional finite floating-point field with a clear error."""
     if field not in raw:
+        return default
+    return _required_float(raw, section, field)
+
+
+def _optional_nullable_float(
+    raw: dict[str, Any],
+    section: str,
+    field: str,
+    default: float | None,
+) -> float | None:
+    """Read an optional finite float, allowing explicit YAML null."""
+    if field not in raw or raw[field] is None:
         return default
     return _required_float(raw, section, field)
 

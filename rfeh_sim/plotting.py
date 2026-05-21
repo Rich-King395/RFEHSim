@@ -59,3 +59,33 @@ def save_received_power_plot(result: SimResult, path: str | Path) -> Path:
     figure.savefig(output_path, dpi=150)
     plt.close(figure)
     return output_path
+
+
+def save_small_scale_gain_plot(result: SimResult, path: str | Path) -> Path:
+    """Save a small-scale fading power-gain plot for each source."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    figure, axis = plt.subplots(figsize=(8, 4.0))
+    if result.small_scale_gain_by_source:
+        for source_id, gain in sorted(result.small_scale_gain_by_source.items()):
+            axis.plot(result.time_s, gain, linewidth=1.1, label=source_id)
+        axis.legend(loc="best")
+    else:
+        axis.plot(result.time_s, [1.0] * len(result.time_s), linewidth=1.1)
+        axis.text(
+            0.5,
+            0.5,
+            "small-scale fading disabled",
+            transform=axis.transAxes,
+            ha="center",
+            va="center",
+        )
+    axis.set_xlabel("Time (s)")
+    axis.set_ylabel("G_SS")
+    axis.set_title("Small-Scale Fading Gain")
+    axis.grid(True, alpha=0.3)
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=150)
+    plt.close(figure)
+    return output_path

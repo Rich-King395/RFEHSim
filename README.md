@@ -50,6 +50,12 @@ To run a receiver configuration with visible charge/discharge cycles:
 python examples/run_v0.py --config configs/receiver_cyclic_v0.yaml --output-dir outputs_receiver_cyclic
 ```
 
+To run a flat small-scale fading channel example:
+
+```bash
+python examples/run_v0.py --config configs/small_scale_fading_v0.yaml --output-dir outputs_small_scale_fading
+```
+
 ## Expected Outputs
 
 The example writes these files:
@@ -58,9 +64,13 @@ The example writes these files:
 - `outputs/vcap.png`
 - `outputs/received_power.png`
 - `outputs/boost_state.png`
+- `outputs/small_scale_gain.png`
 
 The CSV contains:
 
 ```text
 time_s, received_power_w, harvested_power_w, v_cap, boost_state, capacitor_energy_j, net_capacitor_power_w
 ```
+
+When small-scale fading is enabled, the CSV also includes one gain column per
+source, such as `small_scale_gain_mobile`.

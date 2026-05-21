@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from rfeh_sim.app_templates import generate_traffic_bursts
-from rfeh_sim.channel import received_power_trace
+from rfeh_sim.channel import generate_small_scale_gain_by_source, received_power_trace
 from rfeh_sim.harvester import simulate_vcap
 from rfeh_sim.models import FullConfig, SimResult
 from rfeh_sim.transmitter import bursts_to_tx_events
@@ -54,11 +54,19 @@ def run_simulation(config: FullConfig) -> SimResult:
         scenario_config=config.scenario,
         seed=config.simulation.seed + 1,
     )
+    channel_seed = config.simulation.seed + 2
     received_power_w = received_power_trace(
         tx_events=tx_events,
         time_s=time_s,
         scenario_config=config.scenario,
         channel_config=config.channel,
+        seed=channel_seed,
+    )
+    small_scale_gain_by_source = generate_small_scale_gain_by_source(
+        tx_events=tx_events,
+        time_s=time_s,
+        fading_config=config.channel.small_scale,
+        seed=channel_seed,
     )
     (
         harvested_power_w,
@@ -80,6 +88,7 @@ def run_simulation(config: FullConfig) -> SimResult:
         boost_state=boost_state,
         capacitor_energy_j=capacitor_energy_j,
         net_capacitor_power_w=net_capacitor_power_w,
+        small_scale_gain_by_source=small_scale_gain_by_source,
         traffic_bursts=traffic_bursts,
         tx_events=tx_events,
     )

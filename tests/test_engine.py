@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from rfeh_sim.config import load_config
 from rfeh_sim.engine import run_simulation
@@ -23,6 +24,7 @@ def test_run_simulation_returns_arrays_of_matching_length() -> None:
     assert result.boost_state.shape == expected_shape
     assert result.capacitor_energy_j.shape == expected_shape
     assert result.net_capacitor_power_w.shape == expected_shape
+    assert result.small_scale_gain_by_source == {}
     assert result.traffic_bursts
     assert result.tx_events
 
@@ -92,3 +94,14 @@ def test_received_power_above_ambient_during_late_periodic_events() -> None:
     late = result.time_s > config.simulation.duration_s / 2.0
 
     assert np.any(result.received_power_w[late] > config.channel.ambient_power_w)
+
+
+def test_fading_enabled_result_contains_small_scale_gain() -> None:
+    """Fading-enabled configs expose per-source small-scale gain traces."""
+    config = load_config(Path("configs/small_scale_fading_v0.yaml"))
+    result = run_simulation(config)
+
+    assert set(result.small_scale_gain_by_source) == {"mobile"}
+    gain = result.small_scale_gain_by_source["mobile"]
+    assert gain.shape == result.time_s.shape
+    assert np.mean(gain) == pytest.approx(1.0)

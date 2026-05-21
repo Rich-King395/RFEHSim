@@ -7,10 +7,11 @@ import pytest
 
 from rfeh_sim.channel import (
     free_space_path_loss_db,
+    generate_small_scale_gain,
     log_distance_path_loss_db,
     received_power_trace,
 )
-from rfeh_sim.models import ChannelConfig, ScenarioConfig, TxEvent
+from rfeh_sim.models import ChannelConfig, ScenarioConfig, SmallScaleFadingConfig, TxEvent
 from rfeh_sim.units import db_to_linear, dbm_to_watt
 
 
@@ -31,6 +32,27 @@ def _channel_config() -> ChannelConfig:
         reference_distance_m=1.0,
         shadowing_db=0.0,
         ambient_power_w=dbm_to_watt(-30.0),
+    )
+
+
+def _small_scale_config(
+    *,
+    enabled: bool = True,
+    model: str = "rayleigh",
+    k_factor_linear: float = 0.0,
+    coherence_time_s: float = 0.05,
+    normalize_mean: bool = True,
+) -> SmallScaleFadingConfig:
+    """Create small-scale fading settings for channel tests."""
+    return SmallScaleFadingConfig(
+        enabled=enabled,
+        model=model,
+        k_factor_linear=k_factor_linear,
+        coherence_time_s=coherence_time_s,
+        doppler_hz=None,
+        normalize_mean=normalize_mean,
+        per_source_independent=True,
+        random_phase=True,
     )
 
 
@@ -157,3 +179,156 @@ def test_received_power_rejects_non_finite_time_values() -> None:
             _scenario_config(),
             _channel_config(),
         )
+
+
+def test_small_scale_disabled_preserves_large_scale_received_power() -> None:
+    """Disabled fading exactly preserves the old large-scale-only channel."""
+    time_s = np.linspace(0.0, 1.0, 1001)
+    baseline_config = _channel_config()
+    disabled_config = ChannelConfig(
+        path_loss_exponent=baseline_config.path_loss_exponent,
+        reference_distance_m=baseline_config.reference_distance_m,
+        shadowing_db=baseline_config.shadowing_db,
+        ambient_power_w=baseline_config.ambient_power_w,
+        small_scale=_small_scale_config(enabled=False, model="rician"),
+    )
+
+    baseline = received_power_trace([_tx_event()], time_s, _scenario_config(), baseline_config)
+    disabled = received_power_trace(
+        [_tx_event()],
+        time_s,
+        _scenario_config(),
+        disabled_config,
+        seed=123,
+    )
+
+    np.testing.assert_allclose(disabled, baseline, rtol=0.0, atol=0.0)
+
+
+def test_small_scale_model_none_returns_all_ones_gain() -> None:
+    """The none model is an all-ones fading power gain."""
+    time_s = np.linspace(0.0, 1.0, 1001)
+    gain = generate_small_scale_gain(
+        time_s,
+        _small_scale_config(enabled=True, model="none"),
+        seed=42,
+    )
+
+    np.testing.assert_array_equal(gain, np.ones_like(time_s))
+
+
+def test_rayleigh_gain_is_non_negative_and_mean_normalized() -> None:
+    """Rayleigh fading gain is finite, non-negative, and mean-normalized."""
+    time_s = np.arange(0.0, 20.0, 0.001)
+    gain = generate_small_scale_gain(
+        time_s,
+        _small_scale_config(model="rayleigh", coherence_time_s=0.05),
+        seed=42,
+    )
+
+    assert np.all(np.isfinite(gain))
+    assert np.all(gain >= 0.0)
+    assert np.mean(gain) == pytest.approx(1.0)
+
+
+def test_rician_gain_is_non_negative_and_mean_normalized() -> None:
+    """Rician fading gain is finite, non-negative, and mean-normalized."""
+    time_s = np.arange(0.0, 20.0, 0.001)
+    gain = generate_small_scale_gain(
+        time_s,
+        _small_scale_config(
+            model="rician",
+            k_factor_linear=db_to_linear(6.0),
+            coherence_time_s=0.05,
+        ),
+        seed=42,
+    )
+
+    assert np.all(np.isfinite(gain))
+    assert np.all(gain >= 0.0)
+    assert np.mean(gain) == pytest.approx(1.0)
+
+
+def test_rayleigh_gain_has_larger_variance_than_high_k_rician_gain() -> None:
+    """High-K Rician fading fluctuates less than Rayleigh fading."""
+    time_s = np.arange(0.0, 30.0, 0.001)
+    rayleigh = generate_small_scale_gain(
+        time_s,
+        _small_scale_config(model="rayleigh", coherence_time_s=0.05),
+        seed=7,
+    )
+    rician = generate_small_scale_gain(
+        time_s,
+        _small_scale_config(
+            model="rician",
+            k_factor_linear=db_to_linear(12.0),
+            coherence_time_s=0.05,
+        ),
+        seed=7,
+    )
+
+    assert np.var(rayleigh) > np.var(rician)
+
+
+def test_same_seed_gives_identical_small_scale_gain() -> None:
+    """Small-scale fading generation is deterministic for the same seed."""
+    time_s = np.arange(0.0, 5.0, 0.001)
+    config = _small_scale_config(model="rayleigh", coherence_time_s=0.05)
+
+    first = generate_small_scale_gain(time_s, config, seed=99)
+    second = generate_small_scale_gain(time_s, config, seed=99)
+
+    np.testing.assert_allclose(first, second)
+
+
+def test_different_seeds_give_different_small_scale_gain() -> None:
+    """Different seeds produce different fading traces."""
+    time_s = np.arange(0.0, 5.0, 0.001)
+    config = _small_scale_config(model="rayleigh", coherence_time_s=0.05)
+
+    first = generate_small_scale_gain(time_s, config, seed=99)
+    second = generate_small_scale_gain(time_s, config, seed=100)
+
+    assert not np.allclose(first, second)
+
+
+def test_larger_coherence_time_produces_smoother_fading() -> None:
+    """Longer coherence time produces smaller sample-to-sample gain changes."""
+    time_s = np.arange(0.0, 10.0, 0.001)
+    fast = generate_small_scale_gain(
+        time_s,
+        _small_scale_config(model="rayleigh", coherence_time_s=0.01),
+        seed=42,
+    )
+    slow = generate_small_scale_gain(
+        time_s,
+        _small_scale_config(model="rayleigh", coherence_time_s=0.5),
+        seed=42,
+    )
+
+    assert np.mean(np.abs(np.diff(slow))) < np.mean(np.abs(np.diff(fast)))
+
+
+def test_received_power_shape_and_non_negative_with_fading() -> None:
+    """Fading keeps the received power trace shape and non-negative values."""
+    time_s = np.linspace(0.0, 1.0, 1001)
+    base = _channel_config()
+    fading_config = ChannelConfig(
+        path_loss_exponent=base.path_loss_exponent,
+        reference_distance_m=base.reference_distance_m,
+        shadowing_db=base.shadowing_db,
+        ambient_power_w=base.ambient_power_w,
+        small_scale=_small_scale_config(model="rayleigh", coherence_time_s=0.05),
+    )
+    trace = received_power_trace(
+        [_tx_event()],
+        time_s,
+        _scenario_config(),
+        fading_config,
+        seed=42,
+    )
+
+    assert trace.shape == time_s.shape
+    assert np.all(trace >= 0.0)
+    active = (time_s >= _tx_event().start_s) & (time_s < _tx_event().start_s + _tx_event().duration_s)
+    assert np.std(trace[active]) > 0.0

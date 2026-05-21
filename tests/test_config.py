@@ -8,7 +8,7 @@ import pytest
 
 from rfeh_sim.config import load_config
 from rfeh_sim.models import FullConfig
-from rfeh_sim.units import dbm_to_watt
+from rfeh_sim.units import db_to_linear, dbm_to_watt
 
 
 def test_load_default_config() -> None:
@@ -28,6 +28,8 @@ def test_load_default_config() -> None:
     assert config.app_traffic.jitter_s == pytest.approx(0.2)
     assert config.transmitter.default_eirp_w == pytest.approx(dbm_to_watt(15.0))
     assert config.channel.ambient_power_w == pytest.approx(dbm_to_watt(-30.0))
+    assert config.channel.small_scale.enabled is False
+    assert config.channel.small_scale.model == "none"
     assert not hasattr(config.transmitter, "default_eirp_dbm")
     assert not hasattr(config.channel, "ambient_power_dbm")
     assert config.harvester.capacitance_f == pytest.approx(0.0022)
@@ -82,3 +84,14 @@ harvester:
 
     with pytest.raises(ValueError, match="simulation.dt_s"):
         load_config(config_path)
+
+
+def test_load_small_scale_fading_config() -> None:
+    """The small-scale fading example loads with dB values converted."""
+    config = load_config(Path("configs/small_scale_fading_v0.yaml"))
+
+    assert config.channel.small_scale.enabled is True
+    assert config.channel.small_scale.model == "rician"
+    assert config.channel.small_scale.k_factor_linear == pytest.approx(db_to_linear(6.0))
+    assert config.channel.small_scale.coherence_time_s == pytest.approx(0.2)
+    assert config.channel.small_scale.normalize_mean is True

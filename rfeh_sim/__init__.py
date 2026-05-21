@@ -3,6 +3,9 @@
 from rfeh_sim.app_templates import generate_traffic_bursts
 from rfeh_sim.channel import (
     free_space_path_loss_db,
+    generate_complex_gaussian_ar1,
+    generate_small_scale_gain_by_source,
+    generate_small_scale_gain,
     log_distance_path_loss_db,
     received_power_trace,
 )
@@ -18,6 +21,7 @@ from rfeh_sim.models import (
     HarvesterConfig,
     ScenarioConfig,
     SimResult,
+    SmallScaleFadingConfig,
     SimulationConfig,
     TrafficBurst,
     TransmitterConfig,
@@ -39,6 +43,9 @@ __all__ = [
     "TxEvent",
     "bursts_to_tx_events",
     "free_space_path_loss_db",
+    "generate_complex_gaussian_ar1",
+    "generate_small_scale_gain",
+    "generate_small_scale_gain_by_source",
     "generate_traffic_bursts",
     "load_config",
     "log_distance_path_loss_db",
@@ -48,4 +55,5 @@ __all__ = [
     "run_simulation",
     "save_trace_csv",
     "simulate_vcap",
+    "SmallScaleFadingConfig",
 ]

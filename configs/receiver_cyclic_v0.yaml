@@ -4,8 +4,8 @@ simulation:
   seed: 42
 
 scenario:
-  app_id: "social_app"
-  action_id: "like"
+  app_id: "video_app"
+  action_id: "play_video"
   distance_m: 0.5
   frequency_hz: 2.437e9
 
@@ -31,7 +31,7 @@ harvester:
   eta_model: "constant"
   eta_constant: 0.40
   leakage_w: 1.0e-7
-  max_v_cap: 0.70
+  max_v_cap: 0.66
   boost:
     enabled: true
     v_on: 0.66
