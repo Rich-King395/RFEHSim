@@ -20,6 +20,7 @@ def test_run_v0_example_writes_expected_outputs(tmp_path: Path) -> None:
         vcap_path,
         received_power_path,
         boost_state_path,
+        per_source_received_power_path,
         small_scale_gain_path,
     ) = run_example(
         config_path=Path("configs/default_v0.yaml"),
@@ -30,14 +31,16 @@ def test_run_v0_example_writes_expected_outputs(tmp_path: Path) -> None:
     assert vcap_path.exists()
     assert received_power_path.exists()
     assert boost_state_path.exists()
+    assert per_source_received_power_path.exists()
     assert small_scale_gain_path.exists()
     assert vcap_path.stat().st_size > 0
     assert received_power_path.stat().st_size > 0
     assert boost_state_path.stat().st_size > 0
+    assert per_source_received_power_path.stat().st_size > 0
     assert small_scale_gain_path.stat().st_size > 0
 
     trace = pd.read_csv(csv_path)
-    assert list(trace.columns) == TRACE_COLUMNS
+    assert list(trace.columns) == TRACE_COLUMNS + ["received_power_mobile_w"]
     assert not trace.empty
 
 
@@ -49,9 +52,30 @@ def test_run_v0_example_writes_small_scale_gain_when_enabled(tmp_path: Path) -> 
     )
 
     trace = pd.read_csv(csv_path)
+    assert "received_power_mobile_w" in trace.columns
     assert "small_scale_gain_mobile" in trace.columns
     assert small_scale_gain_path.exists()
     assert small_scale_gain_path.stat().st_size > 0
+
+
+def test_run_v0_example_writes_mobile_ap_source_diagnostics(tmp_path: Path) -> None:
+    """Transaction mode writes per-source CSV columns and plot diagnostics."""
+    (
+        csv_path,
+        *_,
+        per_source_received_power_path,
+        small_scale_gain_path,
+    ) = run_example(
+        config_path=Path("configs/transaction_transmitter_v1.yaml"),
+        output_dir=tmp_path,
+    )
+
+    trace = pd.read_csv(csv_path)
+    assert "received_power_mobile_w" in trace.columns
+    assert "received_power_ap_w" in trace.columns
+    assert per_source_received_power_path.exists()
+    assert per_source_received_power_path.stat().st_size > 0
+    assert small_scale_gain_path.exists()
 
 
 def test_diagnostic_summary_runs_without_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -63,4 +87,6 @@ def test_diagnostic_summary_runs_without_error(capsys: pytest.CaptureFixture[str
 
     output = capsys.readouterr().out
     assert "Small-scale model: rician" in output
+    assert "TxEvent sources: mobile" in output
+    assert "Source: mobile" in output
     assert "Mean received power:" in output

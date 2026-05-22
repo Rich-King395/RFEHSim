@@ -61,6 +61,36 @@ def save_received_power_plot(result: SimResult, path: str | Path) -> Path:
     return output_path
 
 
+def save_per_source_received_power_plot(result: SimResult, path: str | Path) -> Path:
+    """Save received RF power contribution traces for each source."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    figure, axis = plt.subplots(figsize=(8, 4.5))
+    if result.received_power_by_source:
+        for source_id, received_power_w in sorted(result.received_power_by_source.items()):
+            axis.plot(result.time_s, received_power_w, linewidth=1.2, label=source_id)
+        axis.legend(loc="best")
+    else:
+        axis.plot(result.time_s, [0.0] * len(result.time_s), linewidth=1.1)
+        axis.text(
+            0.5,
+            0.5,
+            "no transmitter sources",
+            transform=axis.transAxes,
+            ha="center",
+            va="center",
+        )
+    axis.set_xlabel("Time (s)")
+    axis.set_ylabel("Received RF Power Contribution (W)")
+    axis.set_title("Per-Source Received RF Power")
+    axis.grid(True, alpha=0.3)
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=150)
+    plt.close(figure)
+    return output_path
+
+
 def save_small_scale_gain_plot(result: SimResult, path: str | Path) -> Path:
     """Save a small-scale fading power-gain plot for each source."""
     output_path = Path(path)

@@ -10,6 +10,7 @@ import pytest
 
 from rfeh_sim.config import load_config
 from rfeh_sim.engine import run_simulation
+from rfeh_sim.transmitter import generate_tx_events_for_simulation
 
 
 def test_run_simulation_returns_arrays_of_matching_length() -> None:
@@ -19,6 +20,8 @@ def test_run_simulation_returns_arrays_of_matching_length() -> None:
 
     expected_shape = result.time_s.shape
     assert result.received_power_w.shape == expected_shape
+    assert result.received_power_by_source
+    assert result.received_power_by_source["mobile"].shape == expected_shape
     assert result.harvested_power_w.shape == expected_shape
     assert result.v_cap.shape == expected_shape
     assert result.boost_state.shape == expected_shape
@@ -26,7 +29,73 @@ def test_run_simulation_returns_arrays_of_matching_length() -> None:
     assert result.net_capacitor_power_w.shape == expected_shape
     assert result.small_scale_gain_by_source == {}
     assert result.traffic_bursts
+    assert result.action_instances == []
+    assert result.network_transactions == []
+    assert result.chunk_events == []
     assert result.tx_events
+
+
+def test_run_simulation_reconstructs_total_received_power_from_sources() -> None:
+    """Per-source received traces sum to the total trace after adding ambient."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    result = run_simulation(config)
+
+    reconstructed = np.full(
+        result.time_s.shape,
+        config.channel.ambient_power_w,
+        dtype=float,
+    )
+    for source_power_w in result.received_power_by_source.values():
+        reconstructed += source_power_w
+
+    assert set(result.received_power_by_source) == {"mobile", "ap"}
+    np.testing.assert_allclose(result.received_power_w, reconstructed)
+
+
+def test_closer_source_has_higher_equal_eirp_contribution() -> None:
+    """Different source distances are visible in per-source received power."""
+    base = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    config = replace(
+        base,
+        simulation=replace(base.simulation, duration_s=1.0),
+        scenario=replace(
+            base.scenario,
+            mobile_distance_m=0.3,
+            ap_distance_m=1.0,
+        ),
+        channel=replace(base.channel, small_scale=replace(base.channel.small_scale, enabled=False, model="none")),
+    )
+    time_s = np.array([0.0])
+
+    from rfeh_sim.channel import received_power_by_source_trace
+    from rfeh_sim.models import TxEvent
+    from rfeh_sim.units import dbm_to_watt
+
+    by_source = received_power_by_source_trace(
+        [
+            TxEvent(
+                source_id="mobile",
+                start_s=0.0,
+                duration_s=1.0,
+                eirp_w=dbm_to_watt(15.0),
+                center_freq_hz=2.437e9,
+                label="mobile_equal_eirp",
+            ),
+            TxEvent(
+                source_id="ap",
+                start_s=0.0,
+                duration_s=1.0,
+                eirp_w=dbm_to_watt(15.0),
+                center_freq_hz=2.437e9,
+                label="ap_equal_eirp",
+            ),
+        ],
+        time_s,
+        config.scenario,
+        config.channel,
+    )
+
+    assert by_source["mobile"][0] > by_source["ap"][0]
 
 
 def test_run_simulation_vcap_contains_finite_values() -> None:
@@ -105,3 +174,143 @@ def test_fading_enabled_result_contains_small_scale_gain() -> None:
     gain = result.small_scale_gain_by_source["mobile"]
     assert gain.shape == result.time_s.shape
     assert np.mean(gain) == pytest.approx(1.0)
+
+
+def test_burst_transmitter_model_still_works() -> None:
+    """The default burst transmitter path remains available."""
+    config = load_config(Path("configs/default_v0.yaml"))
+    result = run_simulation(config)
+
+    assert config.transmitter.model == "burst"
+    assert result.traffic_bursts
+    assert result.tx_events
+    assert {event.source_id for event in result.tx_events} == {"mobile"}
+
+
+def test_transaction_transmitter_model_produces_tx_events() -> None:
+    """The transaction transmitter path produces RF TxEvents."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    result = run_simulation(config)
+
+    assert config.transmitter.model == "transaction"
+    assert result.action_instances
+    assert result.network_transactions
+    assert result.chunk_events
+    assert result.tx_events
+
+
+def test_transaction_transmitter_includes_mobile_and_ap_sources() -> None:
+    """Transaction mode produces both mobile and AP source IDs."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    result = run_simulation(config)
+
+    source_ids = {event.source_id for event in result.tx_events}
+    assert "mobile" in source_ids
+    assert "ap" in source_ids
+
+
+def test_video_play_has_more_ap_data_airtime_than_mobile_data_airtime() -> None:
+    """Video playback is downlink-heavy in transaction mode."""
+    base = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    config = replace(
+        base,
+        scenario=replace(base.scenario, app_id="video_app", action_id="play_video"),
+    )
+    result = run_simulation(config)
+
+    ap_data_airtime = sum(
+        event.duration_s
+        for event in result.tx_events
+        if event.source_id == "ap" and event.frame_type == "data"
+    )
+    mobile_data_airtime = sum(
+        event.duration_s
+        for event in result.tx_events
+        if event.source_id == "mobile" and event.frame_type == "data"
+    )
+
+    assert ap_data_airtime > mobile_data_airtime
+
+
+def test_social_share_has_more_mobile_uplink_airtime_than_like() -> None:
+    """Social sharing is uplink-heavier than a social like."""
+    base = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    like_config = replace(
+        base,
+        scenario=replace(base.scenario, app_id="social_app", action_id="like"),
+    )
+    share_config = replace(
+        base,
+        scenario=replace(base.scenario, app_id="social_app", action_id="share"),
+    )
+    like_result = run_simulation(like_config)
+    share_result = run_simulation(share_config)
+
+    like_mobile_data_airtime = sum(
+        event.duration_s
+        for event in like_result.tx_events
+        if event.source_id == "mobile" and event.frame_type == "data"
+    )
+    share_mobile_data_airtime = sum(
+        event.duration_s
+        for event in share_result.tx_events
+        if event.source_id == "mobile" and event.frame_type == "data"
+    )
+
+    assert share_mobile_data_airtime > like_mobile_data_airtime
+
+
+def test_transaction_tx_events_appear_after_30s() -> None:
+    """Periodic transaction mode emits TxEvents late in a 60 s simulation."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    result = run_simulation(config)
+
+    assert any(event.start_s > 30.0 for event in result.tx_events)
+
+
+def test_engine_returns_vcap_with_transaction_transmitter() -> None:
+    """The full simulator completes with transaction transmitter mode."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    result = run_simulation(config)
+
+    assert result.v_cap.shape == result.time_s.shape
+    assert np.all(np.isfinite(result.v_cap))
+    assert np.all(result.v_cap >= 0.0)
+
+
+def test_transaction_transmitter_pipeline_is_deterministic() -> None:
+    """Same seed reproduces all transaction transmitter intermediates and TxEvents."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    first = generate_tx_events_for_simulation(config)
+    second = generate_tx_events_for_simulation(config)
+
+    assert first.action_instances == second.action_instances
+    assert first.network_transactions == second.network_transactions
+    assert first.chunk_events == second.chunk_events
+    assert first.tx_events == second.tx_events
+
+
+def test_transaction_transmitter_source_counts_are_representative() -> None:
+    """Video transaction mode produces many AP events and mobile ACK/data events."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    result = run_simulation(config)
+
+    ap_count = sum(event.source_id == "ap" for event in result.tx_events)
+    mobile_count = sum(event.source_id == "mobile" for event in result.tx_events)
+    assert ap_count > 0
+    assert mobile_count > 0
+    assert ap_count > mobile_count * 0.25
+
+
+def test_transaction_tx_events_core_invariants() -> None:
+    """Transaction-mode TxEvents have valid timing, sources, and durations."""
+    config = load_config(Path("configs/transaction_transmitter_v1.yaml"))
+    result = run_simulation(config)
+
+    assert result.tx_events
+    for event in result.tx_events:
+        assert event.source_id
+        assert event.source_id in {"mobile", "ap"}
+        assert event.start_s >= 0.0
+        assert event.start_s + event.duration_s <= config.simulation.duration_s
+        assert event.duration_s > 0.0

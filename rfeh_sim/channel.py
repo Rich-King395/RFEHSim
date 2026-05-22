@@ -1,4 +1,4 @@
-"""V0 fixed-distance wireless channel model."""
+"""Wireless channel model with large-scale path loss and optional fading."""
 
 from __future__ import annotations
 
@@ -72,7 +72,8 @@ def received_power_trace(
     Args:
         tx_events: Coarse transmission events using EIRP in Watts.
         time_s: One-dimensional simulation time grid in seconds.
-        scenario_config: Scenario settings with fixed distance and frequency.
+        scenario_config: Scenario settings with source-specific distances and
+            frequency.
         channel_config: Log-distance channel settings with ambient power in Watts.
         seed: Optional random seed for deterministic small-scale fading.
 
@@ -83,26 +84,53 @@ def received_power_trace(
         channel_config.ambient_power_w,
         "channel_config.ambient_power_w",
     )
-
-    time_array = np.asarray(time_s, dtype=float)
-    if time_array.ndim != 1:
-        raise ValueError("time_s must be a one-dimensional array.")
-    if not np.all(np.isfinite(time_array)):
-        raise ValueError("time_s must contain only finite seconds values.")
+    time_array = _validated_time_array(time_s)
     received_power_w = np.full(
         time_array.shape,
         channel_config.ambient_power_w,
         dtype=float,
     )
+    for source_power_w in received_power_by_source_trace(
+        tx_events=tx_events,
+        time_s=time_array,
+        scenario_config=scenario_config,
+        channel_config=channel_config,
+        seed=seed,
+    ).values():
+        received_power_w += source_power_w
 
-    path_loss_db = log_distance_path_loss_db(
-        distance_m=scenario_config.distance_m,
-        frequency_hz=scenario_config.frequency_hz,
-        reference_distance_m=channel_config.reference_distance_m,
-        path_loss_exponent=channel_config.path_loss_exponent,
-        shadowing_db=channel_config.shadowing_db,
+    return received_power_w
+
+
+def received_power_by_source_trace(
+    tx_events: list[TxEvent],
+    time_s: np.ndarray,
+    scenario_config: ScenarioConfig,
+    channel_config: ChannelConfig,
+    seed: int | None = None,
+) -> dict[str, np.ndarray]:
+    """Compute received RF power contributions by transmitter source.
+
+    The returned traces exclude ambient RF power. Summing all returned source
+    arrays and adding ``channel_config.ambient_power_w`` reproduces
+    ``received_power_trace``.
+    """
+    _require_non_negative_finite(
+        channel_config.ambient_power_w,
+        "channel_config.ambient_power_w",
     )
-    path_gain_linear = db_to_linear(-path_loss_db)
+
+    time_array = _validated_time_array(time_s)
+    received_by_source = {
+        source_id: np.zeros(time_array.shape, dtype=float)
+        for source_id in sorted({event.source_id for event in tx_events})
+    }
+
+    path_gain_by_source = _path_gain_by_source(
+        tx_events,
+        scenario_config,
+        channel_config,
+    )
     small_scale_by_source = generate_small_scale_gain_by_source(
         tx_events,
         time_array,
@@ -123,11 +151,75 @@ def received_power_trace(
         small_scale_gain = small_scale_by_source.get(event.source_id)
         if small_scale_gain is None:
             small_scale_gain = np.ones_like(time_array, dtype=float)
-        received_power_w[active] += (
+        path_gain_linear = path_gain_by_source[event.source_id]
+        received_by_source[event.source_id][active] += (
             event.eirp_w * path_gain_linear * small_scale_gain[active]
         )
 
-    return received_power_w
+    return received_by_source
+
+
+def get_distance_for_source(source_id: str, scenario_config: ScenarioConfig) -> float:
+    """Return the receiver distance for a transmitter source ID.
+
+    Source-specific mapping entries take precedence over named mobile/AP fields,
+    which in turn fall back to the legacy ``distance_m`` field.
+    """
+    if source_id in scenario_config.source_distances_m:
+        return _validated_distance(
+            scenario_config.source_distances_m[source_id],
+            f"scenario.source_distances_m.{source_id}",
+        )
+    if source_id == "mobile" and scenario_config.mobile_distance_m is not None:
+        return _validated_distance(
+            scenario_config.mobile_distance_m,
+            "scenario.mobile_distance_m",
+        )
+    if source_id == "ap" and scenario_config.ap_distance_m is not None:
+        return _validated_distance(scenario_config.ap_distance_m, "scenario.ap_distance_m")
+    if scenario_config.distance_m is not None:
+        return _validated_distance(scenario_config.distance_m, "scenario.distance_m")
+    raise ValueError(
+        f"No receiver distance configured for source_id='{source_id}'. "
+        "Set scenario.distance_m, scenario.mobile_distance_m/ap_distance_m, "
+        "or scenario.source_distances_m."
+    )
+
+
+def _path_gain_by_source(
+    tx_events: list[TxEvent],
+    scenario_config: ScenarioConfig,
+    channel_config: ChannelConfig,
+) -> dict[str, float]:
+    """Compute deterministic large-scale path gain for each TxEvent source."""
+    path_gains: dict[str, float] = {}
+    for source_id in sorted({event.source_id for event in tx_events}):
+        distance_m = get_distance_for_source(source_id, scenario_config)
+        path_loss_db = log_distance_path_loss_db(
+            distance_m=distance_m,
+            frequency_hz=scenario_config.frequency_hz,
+            reference_distance_m=channel_config.reference_distance_m,
+            path_loss_exponent=channel_config.path_loss_exponent,
+            shadowing_db=channel_config.shadowing_db,
+        )
+        path_gains[source_id] = db_to_linear(-path_loss_db)
+    return path_gains
+
+
+def _validated_distance(distance_m: float, name: str) -> float:
+    """Return a distance after validating that it is finite and positive."""
+    _require_positive_finite(distance_m, name)
+    return distance_m
+
+
+def _validated_time_array(time_s: np.ndarray) -> np.ndarray:
+    """Return a one-dimensional finite time grid as a float array."""
+    time_array = np.asarray(time_s, dtype=float)
+    if time_array.ndim != 1:
+        raise ValueError("time_s must be a one-dimensional array.")
+    if not np.all(np.isfinite(time_array)):
+        raise ValueError("time_s must contain only finite seconds values.")
+    return time_array
 
 
 def generate_complex_gaussian_ar1(

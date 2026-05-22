@@ -8,7 +8,9 @@ import pytest
 from rfeh_sim.channel import (
     free_space_path_loss_db,
     generate_small_scale_gain,
+    get_distance_for_source,
     log_distance_path_loss_db,
+    received_power_by_source_trace,
     received_power_trace,
 )
 from rfeh_sim.models import ChannelConfig, ScenarioConfig, SmallScaleFadingConfig, TxEvent
@@ -68,6 +70,18 @@ def _tx_event() -> TxEvent:
     )
 
 
+def _source_tx_event(source_id: str) -> TxEvent:
+    """Create an active TxEvent for a specific transmitter source."""
+    return TxEvent(
+        source_id=source_id,
+        start_s=0.0,
+        duration_s=1.0,
+        eirp_w=dbm_to_watt(15.0),
+        center_freq_hz=2.437e9,
+        label=f"{source_id}_event",
+    )
+
+
 def test_path_loss_increases_with_distance() -> None:
     """Log-distance path loss should grow as transmitter distance increases."""
     near_loss_db = log_distance_path_loss_db(
@@ -110,6 +124,120 @@ def test_path_gain_decreases_with_distance() -> None:
     )
 
     assert db_to_linear(-far_loss_db) < db_to_linear(-near_loss_db)
+
+
+def test_get_distance_for_source_uses_legacy_fallback() -> None:
+    """Legacy scenario.distance_m remains the fallback for all sources."""
+    scenario = _scenario_config(distance_m=2.0)
+
+    assert get_distance_for_source("mobile", scenario) == pytest.approx(2.0)
+    assert get_distance_for_source("ap", scenario) == pytest.approx(2.0)
+    assert get_distance_for_source("sensor", scenario) == pytest.approx(2.0)
+
+
+def test_get_distance_for_source_uses_mobile_and_ap_distances() -> None:
+    """Named source distances override the legacy fallback for mobile and AP."""
+    scenario = ScenarioConfig(
+        app_id="video_app",
+        action_id="play_video",
+        distance_m=9.0,
+        frequency_hz=2.437e9,
+        mobile_distance_m=1.0,
+        ap_distance_m=5.0,
+    )
+
+    assert get_distance_for_source("mobile", scenario) == pytest.approx(1.0)
+    assert get_distance_for_source("ap", scenario) == pytest.approx(5.0)
+    assert get_distance_for_source("sensor", scenario) == pytest.approx(9.0)
+
+
+def test_source_distance_mapping_takes_precedence() -> None:
+    """Explicit source_distances_m entries take precedence over named fields."""
+    scenario = ScenarioConfig(
+        app_id="video_app",
+        action_id="play_video",
+        distance_m=9.0,
+        frequency_hz=2.437e9,
+        mobile_distance_m=1.0,
+        ap_distance_m=5.0,
+        source_distances_m={"mobile": 2.0, "sensor": 4.0},
+    )
+
+    assert get_distance_for_source("mobile", scenario) == pytest.approx(2.0)
+    assert get_distance_for_source("sensor", scenario) == pytest.approx(4.0)
+    assert get_distance_for_source("ap", scenario) == pytest.approx(5.0)
+
+
+def test_unknown_source_without_fallback_distance_raises() -> None:
+    """Unknown sources require either source_distances_m or legacy distance_m."""
+    scenario = ScenarioConfig(
+        app_id="video_app",
+        action_id="play_video",
+        distance_m=None,
+        frequency_hz=2.437e9,
+        mobile_distance_m=1.0,
+        ap_distance_m=5.0,
+    )
+
+    with pytest.raises(ValueError, match="source_id='sensor'"):
+        received_power_trace(
+            [_source_tx_event("sensor")],
+            np.array([0.0, 0.5]),
+            scenario,
+            _channel_config(),
+        )
+
+
+def test_unknown_source_with_source_distance_mapping_works() -> None:
+    """Non-mobile/AP sources work when they have an explicit distance entry."""
+    scenario = ScenarioConfig(
+        app_id="video_app",
+        action_id="play_video",
+        distance_m=None,
+        frequency_hz=2.437e9,
+        source_distances_m={"sensor": 2.0},
+    )
+    time_s = np.array([0.0, 0.5])
+    trace = received_power_trace(
+        [_source_tx_event("sensor")],
+        time_s,
+        scenario,
+        _channel_config(),
+    )
+
+    assert trace.shape == time_s.shape
+    assert np.all(trace > _channel_config().ambient_power_w)
+
+
+def test_source_specific_distance_changes_received_power() -> None:
+    """For equal EIRP, the closer source contributes more received power."""
+    scenario = ScenarioConfig(
+        app_id="video_app",
+        action_id="play_video",
+        distance_m=None,
+        frequency_hz=2.437e9,
+        mobile_distance_m=1.0,
+        ap_distance_m=5.0,
+    )
+    channel_config = _channel_config()
+    time_s = np.array([0.0])
+
+    mobile_trace = received_power_trace(
+        [_source_tx_event("mobile")],
+        time_s,
+        scenario,
+        channel_config,
+    )
+    ap_trace = received_power_trace(
+        [_source_tx_event("ap")],
+        time_s,
+        scenario,
+        channel_config,
+    )
+
+    mobile_contribution = mobile_trace[0] - channel_config.ambient_power_w
+    ap_contribution = ap_trace[0] - channel_config.ambient_power_w
+    assert mobile_contribution > ap_contribution
 
 
 def test_received_power_without_tx_events_equals_ambient() -> None:
@@ -168,6 +296,30 @@ def test_received_power_trace_shape_matches_time_shape() -> None:
     )
 
     assert trace.shape == time_s.shape
+
+
+def test_received_power_total_equals_sources_plus_ambient() -> None:
+    """Total received power is ambient plus all source contributions."""
+    time_s = np.linspace(0.0, 1.0, 101)
+    scenario = ScenarioConfig(
+        app_id="video_app",
+        action_id="play_video",
+        distance_m=None,
+        frequency_hz=2.437e9,
+        mobile_distance_m=0.5,
+        ap_distance_m=1.5,
+    )
+    tx_events = [_source_tx_event("mobile"), _source_tx_event("ap")]
+    channel_config = _channel_config()
+
+    total = received_power_trace(tx_events, time_s, scenario, channel_config)
+    by_source = received_power_by_source_trace(tx_events, time_s, scenario, channel_config)
+    reconstructed = np.full(time_s.shape, channel_config.ambient_power_w, dtype=float)
+    for source_trace in by_source.values():
+        reconstructed += source_trace
+
+    assert set(by_source) == {"mobile", "ap"}
+    np.testing.assert_allclose(total, reconstructed)
 
 
 def test_received_power_rejects_non_finite_time_values() -> None:

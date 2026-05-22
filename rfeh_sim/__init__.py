@@ -1,12 +1,20 @@
 """RF energy harvesting side-channel simulator package."""
 
+from rfeh_sim.app_actions import (
+    CANONICAL_APP_ACTIONS,
+    normalize_action_id,
+    normalize_app_action,
+    normalize_app_id,
+)
 from rfeh_sim.app_templates import generate_traffic_bursts
 from rfeh_sim.channel import (
     free_space_path_loss_db,
     generate_complex_gaussian_ar1,
     generate_small_scale_gain_by_source,
     generate_small_scale_gain,
+    get_distance_for_source,
     log_distance_path_loss_db,
+    received_power_by_source_trace,
     received_power_trace,
 )
 from rfeh_sim.config import load_config
@@ -14,41 +22,81 @@ from rfeh_sim.engine import run_simulation
 from rfeh_sim.harvester import rf_to_dc_efficiency_constant, simulate_vcap
 from rfeh_sim.io import result_to_dataframe, save_trace_csv
 from rfeh_sim.models import (
+    ActionInstance,
     AppTrafficConfig,
     BoostConfig,
     ChannelConfig,
+    ChunkEvent,
     FullConfig,
     HarvesterConfig,
+    NetworkTransaction,
     ScenarioConfig,
     SimResult,
     SmallScaleFadingConfig,
     SimulationConfig,
     TrafficBurst,
     TransmitterConfig,
+    TransmitterResult,
     TxEvent,
+    WifiConfig,
 )
-from rfeh_sim.transmitter import bursts_to_tx_events
+from rfeh_sim.template_loader import (
+    DEFAULT_TEMPLATE_PATH,
+    TransactionSpec,
+    get_transaction_specs,
+    load_transaction_template_registry,
+)
+from rfeh_sim.transmitter import (
+    bursts_to_tx_events,
+    chunks_to_tx_events,
+    generate_ack_tx_events,
+    generate_action_instances,
+    generate_network_transactions,
+    generate_tx_events_for_simulation,
+    transactions_to_chunks,
+)
 
 __all__ = [
     "ChannelConfig",
+    "CANONICAL_APP_ACTIONS",
+    "ActionInstance",
     "AppTrafficConfig",
     "BoostConfig",
+    "ChunkEvent",
     "FullConfig",
     "HarvesterConfig",
+    "NetworkTransaction",
     "ScenarioConfig",
     "SimResult",
     "SimulationConfig",
     "TrafficBurst",
     "TransmitterConfig",
+    "TransmitterResult",
+    "TransactionSpec",
     "TxEvent",
+    "WifiConfig",
+    "DEFAULT_TEMPLATE_PATH",
     "bursts_to_tx_events",
+    "chunks_to_tx_events",
+    "generate_ack_tx_events",
+    "normalize_action_id",
+    "normalize_app_action",
+    "normalize_app_id",
     "free_space_path_loss_db",
     "generate_complex_gaussian_ar1",
     "generate_small_scale_gain",
     "generate_small_scale_gain_by_source",
+    "get_distance_for_source",
     "generate_traffic_bursts",
+    "generate_action_instances",
+    "generate_network_transactions",
+    "generate_tx_events_for_simulation",
+    "get_transaction_specs",
+    "load_transaction_template_registry",
+    "transactions_to_chunks",
     "load_config",
     "log_distance_path_loss_db",
+    "received_power_by_source_trace",
     "received_power_trace",
     "rf_to_dc_efficiency_constant",
     "result_to_dataframe",

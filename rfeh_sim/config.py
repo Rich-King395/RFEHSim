@@ -18,6 +18,7 @@ from rfeh_sim.models import (
     SmallScaleFadingConfig,
     SimulationConfig,
     TransmitterConfig,
+    WifiConfig,
 )
 from rfeh_sim.units import db_to_linear, dbm_to_watt
 
@@ -53,10 +54,37 @@ def load_config(path: str | Path) -> FullConfig:
     scenario_raw = _require_mapping(raw, "scenario")
     app_traffic_raw = _optional_mapping(raw, "app_traffic")
     transmitter_raw = _require_mapping(raw, "transmitter")
+    wifi_raw = _optional_mapping(raw, "wifi")
     channel_raw = _require_mapping(raw, "channel")
     small_scale_raw = _optional_mapping(channel_raw, "small_scale")
     harvester_raw = _require_mapping(raw, "harvester")
     boost_raw = _optional_mapping(harvester_raw, "boost")
+
+    scenario_config = ScenarioConfig(
+        app_id=_required_str(scenario_raw, "scenario", "app_id"),
+        action_id=_required_str(scenario_raw, "scenario", "action_id"),
+        distance_m=_optional_nullable_float(
+            scenario_raw,
+            "scenario",
+            "distance_m",
+            None,
+        ),
+        frequency_hz=_required_float(scenario_raw, "scenario", "frequency_hz"),
+        mobile_distance_m=_optional_nullable_float(
+            scenario_raw,
+            "scenario",
+            "mobile_distance_m",
+            None,
+        ),
+        ap_distance_m=_optional_nullable_float(
+            scenario_raw,
+            "scenario",
+            "ap_distance_m",
+            None,
+        ),
+        source_distances_m=_load_source_distances(scenario_raw),
+    )
+    _validate_scenario_distances(scenario_config)
 
     return FullConfig(
         simulation=SimulationConfig(
@@ -64,18 +92,10 @@ def load_config(path: str | Path) -> FullConfig:
             dt_s=_required_float(simulation_raw, "simulation", "dt_s"),
             seed=_required_int(simulation_raw, "simulation", "seed"),
         ),
-        scenario=ScenarioConfig(
-            app_id=_required_str(scenario_raw, "scenario", "app_id"),
-            action_id=_required_str(scenario_raw, "scenario", "action_id"),
-            distance_m=_required_float(scenario_raw, "scenario", "distance_m"),
-            frequency_hz=_required_float(scenario_raw, "scenario", "frequency_hz"),
-        ),
+        scenario=scenario_config,
         app_traffic=_load_app_traffic_config(app_traffic_raw),
-        transmitter=TransmitterConfig(
-            default_eirp_w=dbm_to_watt(
-                _required_float(transmitter_raw, "transmitter", "default_eirp_dbm")
-            ),
-        ),
+        transmitter=_load_transmitter_config(transmitter_raw),
+        wifi=_load_wifi_config(wifi_raw),
         channel=ChannelConfig(
             path_loss_exponent=_required_float(
                 channel_raw,
@@ -176,6 +196,139 @@ def _load_app_traffic_config(raw: dict[str, Any]) -> AppTrafficConfig:
         jitter_s=jitter_s,
         start_offset_s=start_offset_s,
         repeat_until_end=repeat_until_end,
+    )
+
+
+def _load_source_distances(raw: dict[str, Any]) -> dict[str, float]:
+    """Load optional source-specific receiver distances from scenario config."""
+    if "source_distances_m" not in raw:
+        return {}
+    value = raw["source_distances_m"]
+    if not isinstance(value, dict):
+        raise ValueError("Configuration section 'scenario.source_distances_m' must be a mapping.")
+    distances: dict[str, float] = {}
+    for source_id, distance in value.items():
+        source_name = str(source_id)
+        try:
+            distance_m = float(distance)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Configuration field 'scenario.source_distances_m.{source_name}' "
+                "must be a finite positive number."
+            ) from exc
+        if not math.isfinite(distance_m) or distance_m <= 0.0:
+            raise ValueError(
+                f"Configuration field 'scenario.source_distances_m.{source_name}' "
+                "must be a finite positive number."
+            )
+        distances[source_name] = distance_m
+    return distances
+
+
+def _validate_scenario_distances(scenario: ScenarioConfig) -> None:
+    """Validate legacy and source-specific scenario distances."""
+    if scenario.distance_m is None and not (
+        scenario.mobile_distance_m is not None
+        or scenario.ap_distance_m is not None
+        or scenario.source_distances_m
+    ):
+        raise ValueError(
+            "Scenario must define distance_m or at least one source-specific distance."
+        )
+    for field_name, value in [
+        ("distance_m", scenario.distance_m),
+        ("mobile_distance_m", scenario.mobile_distance_m),
+        ("ap_distance_m", scenario.ap_distance_m),
+    ]:
+        if value is not None and (not math.isfinite(value) or value <= 0.0):
+            raise ValueError(
+                f"Configuration field 'scenario.{field_name}' must be a finite positive number."
+            )
+
+
+def _load_transmitter_config(raw: dict[str, Any]) -> TransmitterConfig:
+    """Load transmitter settings with backward-compatible burst defaults."""
+    default_eirp_dbm = _required_float(raw, "transmitter", "default_eirp_dbm")
+    model = str(raw.get("model", "burst"))
+    if model not in {"burst", "transaction"}:
+        raise ValueError(
+            "Configuration field 'transmitter.model' must be 'burst' "
+            "or 'transaction'."
+        )
+
+    mobile_eirp_dbm_mean = _optional_float(
+        raw,
+        "transmitter",
+        "mobile_eirp_dbm_mean",
+        default_eirp_dbm,
+    )
+    mobile_eirp_dbm_std = _optional_float(
+        raw,
+        "transmitter",
+        "mobile_eirp_dbm_std",
+        0.0,
+    )
+    ap_eirp_dbm_mean = _optional_float(
+        raw,
+        "transmitter",
+        "ap_eirp_dbm_mean",
+        default_eirp_dbm,
+    )
+    ap_eirp_dbm_std = _optional_float(raw, "transmitter", "ap_eirp_dbm_std", 0.0)
+
+    if mobile_eirp_dbm_std < 0.0:
+        raise ValueError("Configuration field 'transmitter.mobile_eirp_dbm_std' must be >= 0.")
+    if ap_eirp_dbm_std < 0.0:
+        raise ValueError("Configuration field 'transmitter.ap_eirp_dbm_std' must be >= 0.")
+
+    return TransmitterConfig(
+        default_eirp_w=dbm_to_watt(default_eirp_dbm),
+        model=model,
+        mobile_eirp_w_mean=dbm_to_watt(mobile_eirp_dbm_mean),
+        mobile_eirp_dbm_std=mobile_eirp_dbm_std,
+        ap_eirp_w_mean=dbm_to_watt(ap_eirp_dbm_mean),
+        ap_eirp_dbm_std=ap_eirp_dbm_std,
+    )
+
+
+def _load_wifi_config(raw: dict[str, Any]) -> WifiConfig:
+    """Load simplified Wi-Fi settings for future transaction transmitter mode."""
+    chunk_payload_bytes = _optional_int(raw, "wifi", "chunk_payload_bytes", 1500)
+    mac_overhead_bytes = _optional_int(raw, "wifi", "mac_overhead_bytes", 64)
+    mobile_phy_rate_mbps = _optional_float(raw, "wifi", "mobile_phy_rate_mbps", 54.0)
+    ap_phy_rate_mbps = _optional_float(raw, "wifi", "ap_phy_rate_mbps", 54.0)
+    transport_ack_ratio = _optional_float(raw, "wifi", "transport_ack_ratio", 0.0)
+
+    if chunk_payload_bytes <= 0:
+        raise ValueError("Configuration field 'wifi.chunk_payload_bytes' must be > 0.")
+    if mac_overhead_bytes < 0:
+        raise ValueError("Configuration field 'wifi.mac_overhead_bytes' must be >= 0.")
+    if mobile_phy_rate_mbps <= 0.0:
+        raise ValueError("Configuration field 'wifi.mobile_phy_rate_mbps' must be > 0.")
+    if ap_phy_rate_mbps <= 0.0:
+        raise ValueError("Configuration field 'wifi.ap_phy_rate_mbps' must be > 0.")
+    if transport_ack_ratio < 0.0:
+        raise ValueError("Configuration field 'wifi.transport_ack_ratio' must be >= 0.")
+
+    return WifiConfig(
+        center_freq_hz=_optional_float(raw, "wifi", "center_freq_hz", 2.437e9),
+        bandwidth_hz=_optional_float(raw, "wifi", "bandwidth_hz", 20e6),
+        chunk_payload_bytes=chunk_payload_bytes,
+        mac_overhead_bytes=mac_overhead_bytes,
+        preamble_s=_optional_float(raw, "wifi", "preamble_s", 4.0e-5),
+        mobile_phy_rate_bps=mobile_phy_rate_mbps * 1e6,
+        ap_phy_rate_bps=ap_phy_rate_mbps * 1e6,
+        mac_ack_enabled=_optional_bool(raw, "wifi", "mac_ack_enabled", False),
+        sifs_s=_optional_float(raw, "wifi", "sifs_s", 1.6e-5),
+        mac_ack_duration_s=_optional_float(raw, "wifi", "mac_ack_duration_s", 4.0e-5),
+        mac_ack_eirp_w=dbm_to_watt(_optional_float(raw, "wifi", "mac_ack_eirp_dbm", 10.0)),
+        transport_ack_enabled=_optional_bool(
+            raw,
+            "wifi",
+            "transport_ack_enabled",
+            False,
+        ),
+        transport_ack_ratio=transport_ack_ratio,
     )
 
 
@@ -373,6 +526,18 @@ def _required_int(raw: dict[str, Any], section: str, field: str) -> int:
         raise ValueError(
             f"Configuration field '{section}.{field}' must be an integer."
         ) from exc
+
+
+def _optional_int(
+    raw: dict[str, Any],
+    section: str,
+    field: str,
+    default: int,
+) -> int:
+    """Read an optional integer field with a clear error."""
+    if field not in raw:
+        return default
+    return _required_int(raw, section, field)
 
 
 def _required_str(raw: dict[str, Any], section: str, field: str) -> str:

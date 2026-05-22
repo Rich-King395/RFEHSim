@@ -14,8 +14,10 @@ from rfeh_sim.config import load_config
 from rfeh_sim.engine import run_simulation
 from rfeh_sim.io import save_trace_csv
 from rfeh_sim.models import FullConfig, SimResult
+from rfeh_sim.channel import get_distance_for_source
 from rfeh_sim.plotting import (
     save_boost_state_plot,
+    save_per_source_received_power_plot,
     save_received_power_plot,
     save_small_scale_gain_plot,
     save_vcap_plot,
@@ -25,7 +27,7 @@ from rfeh_sim.plotting import (
 def run_example(
     config_path: str | Path,
     output_dir: str | Path,
-) -> tuple[Path, Path, Path, Path, Path]:
+) -> tuple[Path, Path, Path, Path, Path, Path]:
     """Run the v0 simulation example and write CSV/plot outputs."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -40,6 +42,10 @@ def run_example(
         output_path / "received_power.png",
     )
     boost_state_path = save_boost_state_plot(result, output_path / "boost_state.png")
+    per_source_received_power_path = save_per_source_received_power_plot(
+        result,
+        output_path / "per_source_received_power.png",
+    )
     small_scale_gain_path = save_small_scale_gain_plot(
         result,
         output_path / "small_scale_gain.png",
@@ -51,6 +57,7 @@ def run_example(
         vcap_path,
         received_power_path,
         boost_state_path,
+        per_source_received_power_path,
         small_scale_gain_path,
     )
 
@@ -71,6 +78,16 @@ def print_diagnostic_summary(config: FullConfig, result: SimResult) -> None:
             print(f"  max: {gain.max():.6g}")
     else:
         print("Small-scale gain: disabled")
+    source_ids = sorted({event.source_id for event in result.tx_events})
+    print(f"TxEvent sources: {', '.join(source_ids) if source_ids else 'none'}")
+    for source_id in source_ids:
+        distance_m = get_distance_for_source(source_id, config.scenario)
+        received_power_w = result.received_power_by_source.get(source_id)
+        print(f"Source: {source_id}")
+        print(f"  distance: {distance_m:.6g} m")
+        if received_power_w is not None:
+            print(f"  mean received contribution: {received_power_w.mean():.6g} W")
+            print(f"  max received contribution: {received_power_w.max():.6g} W")
     print(f"Mean received power: {result.received_power_w.mean():.6g} W")
     print(f"Max received power: {result.received_power_w.max():.6g} W")
 
@@ -95,6 +112,7 @@ def main() -> None:
         vcap_path,
         received_power_path,
         boost_state_path,
+        per_source_received_power_path,
         small_scale_gain_path,
     ) = run_example(
         args.config,
@@ -104,6 +122,7 @@ def main() -> None:
     print(f"Wrote VCAP plot: {vcap_path}")
     print(f"Wrote received power plot: {received_power_path}")
     print(f"Wrote boost state plot: {boost_state_path}")
+    print(f"Wrote per-source received power plot: {per_source_received_power_path}")
     print(f"Wrote small-scale gain plot: {small_scale_gain_path}")
 
 

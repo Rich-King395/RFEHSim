@@ -32,6 +32,10 @@ def result_to_dataframe(result: SimResult) -> pd.DataFrame:
         "net_capacitor_power_w": result.net_capacitor_power_w,
     }
     columns = list(TRACE_COLUMNS)
+    for source_id, received_power_w in sorted(result.received_power_by_source.items()):
+        column = f"received_power_{_safe_column_suffix(source_id)}_w"
+        data[column] = received_power_w
+        columns.append(column)
     for source_id, gain in sorted(result.small_scale_gain_by_source.items()):
         column = f"small_scale_gain_{_safe_column_suffix(source_id)}"
         data[column] = gain

@@ -23,8 +23,11 @@ class ScenarioConfig:
 
     app_id: str
     action_id: str
-    distance_m: float
+    distance_m: float | None
     frequency_hz: float
+    mobile_distance_m: float | None = None
+    ap_distance_m: float | None = None
+    source_distances_m: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +35,30 @@ class TransmitterConfig:
     """Transmitter settings after conversion to simulator-internal units."""
 
     default_eirp_w: float
+    model: Literal["burst", "transaction"] = "burst"
+    mobile_eirp_w_mean: float = 0.0
+    mobile_eirp_dbm_std: float = 0.0
+    ap_eirp_w_mean: float = 0.0
+    ap_eirp_dbm_std: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class WifiConfig:
+    """Simplified Wi-Fi timing and framing settings for transmitter v1."""
+
+    center_freq_hz: float
+    bandwidth_hz: float
+    chunk_payload_bytes: int
+    mac_overhead_bytes: int
+    preamble_s: float
+    mobile_phy_rate_bps: float
+    ap_phy_rate_bps: float
+    mac_ack_enabled: bool
+    sifs_s: float
+    mac_ack_duration_s: float
+    mac_ack_eirp_w: float
+    transport_ack_enabled: bool
+    transport_ack_ratio: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +148,7 @@ class FullConfig:
     scenario: ScenarioConfig
     app_traffic: AppTrafficConfig
     transmitter: TransmitterConfig
+    wifi: WifiConfig
     channel: ChannelConfig
     harvester: HarvesterConfig
 
@@ -137,6 +165,41 @@ class TrafficBurst:
 
 
 @dataclass(frozen=True, slots=True)
+class ActionInstance:
+    """A concrete occurrence of an app/action within a simulation."""
+
+    start_s: float
+    app_id: str
+    action_id: str
+    instance_id: int
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkTransaction:
+    """A simplified app-level network transaction for transmitter v1."""
+
+    start_s: float
+    duration_s: float
+    ul_bytes: int
+    dl_bytes: int
+    protocol: str
+    label: str
+    action_instance_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkEvent:
+    """A simplified uplink or downlink chunk emitted by a transaction."""
+
+    start_s: float
+    payload_bytes: int
+    direction: Literal["uplink", "downlink"]
+    transaction_label: str
+    action_instance_id: int
+
+
+@dataclass(frozen=True, slots=True)
 class TxEvent:
     """A coarse RF transmission event emitted by the v0 transmitter model."""
 
@@ -146,6 +209,11 @@ class TxEvent:
     eirp_w: float
     center_freq_hz: float
     label: str
+    bandwidth_hz: float | None = None
+    frame_type: str = "data"
+    direction: str = "uplink"
+    payload_bytes: int | None = None
+    phy_rate_bps: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +222,7 @@ class SimResult:
 
     time_s: np.ndarray
     received_power_w: np.ndarray
+    received_power_by_source: dict[str, np.ndarray]
     harvested_power_w: np.ndarray
     v_cap: np.ndarray
     boost_state: np.ndarray
@@ -161,4 +230,18 @@ class SimResult:
     net_capacitor_power_w: np.ndarray
     small_scale_gain_by_source: dict[str, np.ndarray]
     traffic_bursts: list[TrafficBurst]
+    action_instances: list[ActionInstance]
+    network_transactions: list[NetworkTransaction]
+    chunk_events: list[ChunkEvent]
+    tx_events: list[TxEvent]
+
+
+@dataclass(frozen=True, slots=True)
+class TransmitterResult:
+    """Intermediate and final outputs from the transmitter pipeline."""
+
+    traffic_bursts: list[TrafficBurst]
+    action_instances: list[ActionInstance]
+    network_transactions: list[NetworkTransaction]
+    chunk_events: list[ChunkEvent]
     tx_events: list[TxEvent]
