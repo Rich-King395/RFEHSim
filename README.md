@@ -4,69 +4,7 @@
 
 This repository implements a Python simulator for RF energy harvesting side-channel experiments. It takes a YAML configuration describing simulation timing, app/action traffic, transmitter settings, channel settings, and harvester settings, then produces receiver-side RF power and storage-capacitor voltage traces.
 
-The implemented high-level pipeline is:
-
-```text
-YAML config
--> app/action traffic generation
--> transmitter TxEvents
--> wireless channel received RF power
--> RF-to-DC harvested power
--> storage capacitor energy update
--> V_CAP time series
-```
-
-The simulator outputs:
-
-- `trace.csv`
-- `Setting.txt`
-- `tx_events.csv`
-- `vcap.png`
-- `received_power.png`
-- `per_source_received_power.png`
-- `tx_events_timeline.png`
-
-`trace.csv` includes total receiver-collected RF power, harvested power, `V_CAP`, capacitor energy, net capacitor power, and per-source received-power columns when source diagnostics are available.
-
 ## Repository Structure
-
-```text
-RFEHSim/
-  configs/
-    default_v0.yaml
-    multi_mobile_v1.yaml
-    transaction_transmitter_v1.yaml
-    app_action_sweep_base.yaml
-    ...
-  examples/
-    run_v0.py
-    run_app_action_sweep.py
-  rfeh_sim/
-    app_actions.py
-    app_templates.py
-    channel.py
-    config.py
-    engine.py
-    harvester.py
-    io.py
-    models.py
-    plotting.py
-    template_loader.py
-    transmitter.py
-    units.py
-    data/
-      app_transaction_templates.yaml
-  tests/
-    test_channel.py
-    test_config.py
-    test_engine.py
-    test_example_run.py
-    test_harvester.py
-    test_transmitter_multi_mobile.py
-    ...
-  pyproject.toml
-  README.md
-```
 
 Key modules:
 
@@ -83,19 +21,6 @@ Key modules:
 ## End-to-End Simulation Pipeline
 
 The main programmatic entry point is `rfeh_sim.engine.run_simulation(config)`. It accepts a loaded `FullConfig` and returns a `SimResult`.
-
-```text
-YAML file
-  -> rfeh_sim.config.load_config(...)
-  -> FullConfig
-  -> rfeh_sim.engine.run_simulation(...)
-       -> rfeh_sim.transmitter.generate_tx_events_for_simulation(...)
-       -> rfeh_sim.channel.received_power_by_source_trace(...)
-       -> total received_power_w = ambient_power_w + sum(per-source RF power)
-       -> rfeh_sim.harvester.simulate_vcap(...)
-  -> SimResult
-  -> rfeh_sim.io / rfeh_sim.plotting outputs
-```
 
 ```mermaid
 flowchart LR
@@ -117,7 +42,7 @@ Use Python 3.11 or newer.
 Install the package and dependencies in your chosen Python environment:
 
 ```bash
-python -m pip install -e .
+python -m pip install -e.
 ```
 
 Run the test suite:
@@ -131,8 +56,6 @@ Run the default example:
 ```bash
 python examples/run_v0.py --config configs/default_v0.yaml --output-dir outputs
 ```
-
-The plain `python` command may fail if it points to an environment without the dependencies from `pyproject.toml`.
 
 ## Basic Usage
 
@@ -200,7 +123,7 @@ Where:
 
 ### Transaction Mode
 
-Transaction mode is the main implemented transmitter pipeline:
+The transaction mode is the main implemented transmitter pipeline:
 
 ```text
 scenario app/action
@@ -213,7 +136,7 @@ scenario app/action
 -> list[TxEvent]
 ```
 
-For a single-device legacy config, the loader synthesizes one mobile device. For a multi-mobile config, each item in `scenario.mobile_devices` generates its own actions and transactions.
+For a single-device config, the loader synthesizes one mobile device. For a multi-mobile config, each item in `scenario.mobile_devices` generates its own actions and transactions.
 
 #### App/Action Handling
 
@@ -282,7 +205,7 @@ Where:
 - `t_action` is `ActionInstance.start_s` in seconds.
 - `Delta t_start` is sampled from the template `start_delay_s` range, plus repeated-transaction offsets when configured.
 
-The implementation uses procedural seeded sampling from YAML ranges rather than a closed-form traffic model.
+The implementation uses procedurally seeded sampling from YAML ranges rather than a closed-form traffic model.
 
 #### ChunkEvent Generation
 
@@ -486,19 +409,6 @@ For each configured mobile device:
 
 AP downlink uses one AP source ID, not one AP per phone. Downlink events set `target_device_id` to the intended phone. ACK events for those downlink events are emitted by the target phone.
 
-### Transmitter Limitations
-
-Current transmitter limitations:
-
-- App/action templates are synthetic category-level defaults, not measured app traces.
-- No full TCP or QUIC packet model.
-- No full Wi-Fi MAC/PHY model.
-- No CSMA/CA backoff or collision recovery.
-- No OFDMA or MU-MIMO.
-- No frame aggregation or retransmission model.
-- The scheduler is deterministic and simplified.
-- Burst mode only supports the legacy app/action names listed above.
-
 ## Wireless Channel Model
 
 The wireless channel implementation is in `rfeh_sim/channel.py`. The engine calls `received_power_by_source_trace(...)` to compute per-source RF power contributions and then adds ambient RF power to form `SimResult.received_power_w`.
@@ -605,22 +515,6 @@ Where:
 
 - `G_path` is a unitless linear gain.
 - Implementing code: `_path_gain_by_source(...)`, using `rfeh_sim.units.db_to_linear(-path_loss_db)`.
-
-#### Source Distance Lookup
-
-Distance lookup is implemented in `get_distance_for_source(source_id, scenario_config)`.
-
-Lookup order:
-
-1. If `source_id` matches a configured `scenario.mobile_devices[].device_id`, use that mobile device distance.
-2. If `source_id` matches `scenario.ap.ap_id`, use AP distance.
-3. If `source_id` exists in `scenario.source_distances_m`, use that value.
-4. If `source_id == "mobile"` and `scenario.mobile_distance_m` is set, use it.
-5. If `source_id == "ap"` and `scenario.ap_distance_m` is set, use it.
-6. If legacy `scenario.distance_m` is set, use it.
-7. Otherwise, raise `ValueError`.
-
-AP downlink path loss depends on the AP source distance, not on the target phone distance.
 
 ### Small-Scale Fading
 
