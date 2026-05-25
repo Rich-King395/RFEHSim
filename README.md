@@ -271,9 +271,7 @@ frame_type = "data"
 Simplified Wi-Fi airtime formula in `_wifi_airtime_s(...)`:
 
 $$
-T_{\mathrm{air}} =
-T_{\mathrm{preamble}}
-+ \frac{8(B_{\mathrm{payload}} + B_{\mathrm{mac}})}{R_{\mathrm{phy}}}
+T_{\mathrm{air}} =T_{\mathrm{preamble}}+\frac{8(B_{\mathrm{payload}}+B_{\mathrm{mac}})}{R_{\mathrm{phy}}}
 $$
 
 Where:
@@ -591,13 +589,7 @@ Where:
 Rician mode uses:
 
 $$
-h[k] =
-\sqrt{\frac{K}{K+1}}e^{j\phi}
-+ \sqrt{\frac{1}{K+1}}g[k]
-$$
-
-$$
-G_{\mathrm{ss}}[k] = |h[k]|^2
+h[k] =\sqrt{\frac{K}{K+1}}e^{j\phi}+\sqrt{\frac{1}{K+1}}g[k]
 $$
 
 Where:
@@ -759,9 +751,7 @@ $$
 When boost/load is enabled and currently on:
 
 $$
-P_{\mathrm{draw}}[k] =
-P_{\mathrm{leak}} + P_{q,\mathrm{on}}
-+ \frac{P_{\mathrm{load}}}{\eta_{\mathrm{boost}}}
+P_{\mathrm{draw}}[k] = P_{\mathrm{leak}}+P_{q,\mathrm{on}}+\frac{P_{\mathrm{load}}}{\eta_{\mathrm{boost}}}
 $$
 
 Where:
