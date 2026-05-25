@@ -1,0 +1,354 @@
+# Generic category-level transaction templates for simulation defaults.
+# These are synthetic, plausible traffic patterns for RFEH simulator experiments,
+# not measurements or reverse-engineered traces from specific commercial apps.
+
+templates:
+  video:
+    play:
+      transactions:
+        - label: metadata
+          protocol: https
+          start_delay_s: [0.0, 0.3]
+          duration_s: [0.2, 0.8]
+          ul_bytes: [800, 3000]
+          dl_bytes: [5000, 30000]
+        - label: media_segment
+          protocol: quic
+          start_delay_s: [0.3, 1.0]
+          duration_s: [1.0, 3.0]
+          ul_bytes: [1000, 5000]
+          dl_bytes: [200000, 1500000]
+        - label: heartbeat
+          protocol: https
+          start_delay_s: [2.0, 4.0]
+          duration_s: [0.1, 0.4]
+          ul_bytes: [200, 1000]
+          dl_bytes: [100, 1000]
+    next:
+      transactions:
+        - label: stop_event
+          protocol: https
+          start_delay_s: [0.0, 0.1]
+          duration_s: [0.05, 0.2]
+          ul_bytes: [300, 1500]
+          dl_bytes: [100, 800]
+        - label: metadata
+          protocol: https
+          start_delay_s: [0.1, 0.4]
+          duration_s: [0.2, 0.8]
+          ul_bytes: [800, 3000]
+          dl_bytes: [5000, 30000]
+        - label: media_segment
+          protocol: quic
+          start_delay_s: [0.4, 1.0]
+          duration_s: [1.0, 3.0]
+          ul_bytes: [1000, 5000]
+          dl_bytes: [200000, 1800000]
+    pause:
+      transactions:
+        - label: pause_event
+          protocol: https
+          start_delay_s: [0.0, 0.15]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [300, 1500]
+          dl_bytes: [100, 1000]
+        - label: telemetry
+          protocol: https
+          start_delay_s: [0.1, 0.4]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [200, 1000]
+          dl_bytes: [0, 500]
+    forward:
+      transactions:
+        - label: seek_request
+          protocol: https
+          start_delay_s: [0.0, 0.2]
+          duration_s: [0.1, 0.4]
+          ul_bytes: [500, 2500]
+          dl_bytes: [500, 3000]
+        - label: segment_index
+          protocol: https
+          start_delay_s: [0.2, 0.6]
+          duration_s: [0.2, 0.8]
+          ul_bytes: [500, 2000]
+          dl_bytes: [10000, 80000]
+        - label: media_segment
+          protocol: quic
+          start_delay_s: [0.5, 1.2]
+          duration_s: [1.0, 3.0]
+          ul_bytes: [1000, 5000]
+          dl_bytes: [200000, 1500000]
+
+  music:
+    play:
+      transactions:
+        - label: metadata
+          protocol: https
+          start_delay_s: [0.0, 0.25]
+          duration_s: [0.1, 0.5]
+          ul_bytes: [500, 2000]
+          dl_bytes: [2000, 15000]
+        - label: audio_segment
+          protocol: https
+          start_delay_s: [0.2, 0.9]
+          duration_s: [0.5, 2.0]
+          ul_bytes: [500, 3000]
+          dl_bytes: [50000, 300000]
+        - label: heartbeat
+          protocol: https
+          start_delay_s: [1.0, 2.5]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [100, 800]
+          dl_bytes: [50, 500]
+    next:
+      transactions:
+        - label: skip_event
+          protocol: https
+          start_delay_s: [0.0, 0.15]
+          duration_s: [0.05, 0.2]
+          ul_bytes: [300, 1500]
+          dl_bytes: [100, 1000]
+        - label: metadata
+          protocol: https
+          start_delay_s: [0.1, 0.4]
+          duration_s: [0.1, 0.5]
+          ul_bytes: [500, 2000]
+          dl_bytes: [2000, 15000]
+        - label: audio_segment
+          protocol: https
+          start_delay_s: [0.3, 0.9]
+          duration_s: [0.5, 2.0]
+          ul_bytes: [500, 3000]
+          dl_bytes: [50000, 300000]
+    pause:
+      transactions:
+        - label: pause_event
+          protocol: https
+          start_delay_s: [0.0, 0.15]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [200, 1200]
+          dl_bytes: [50, 800]
+        - label: telemetry
+          protocol: https
+          start_delay_s: [0.1, 0.4]
+          duration_s: [0.05, 0.2]
+          ul_bytes: [100, 600]
+          dl_bytes: [0, 300]
+    forward:
+      transactions:
+        - label: seek_request
+          protocol: https
+          start_delay_s: [0.0, 0.2]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [300, 1500]
+          dl_bytes: [100, 1000]
+        - label: audio_refetch
+          protocol: https
+          start_delay_s: [0.2, 0.8]
+          duration_s: [0.4, 1.5]
+          ul_bytes: [500, 2500]
+          dl_bytes: [50000, 250000]
+
+  social_media:
+    thumb_up:
+      transactions:
+        - label: like_api
+          protocol: https
+          start_delay_s: [0.0, 0.2]
+          duration_s: [0.1, 0.4]
+          ul_bytes: [500, 2000]
+          dl_bytes: [300, 1500]
+        - label: telemetry
+          protocol: https
+          start_delay_s: [0.1, 0.5]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [200, 1000]
+          dl_bytes: [0, 500]
+    comment:
+      transactions:
+        - label: comment_api
+          protocol: https
+          start_delay_s: [0.0, 0.3]
+          duration_s: [0.2, 0.8]
+          ul_bytes: [1000, 8000]
+          dl_bytes: [500, 5000]
+        - label: refresh
+          protocol: https
+          start_delay_s: [0.2, 0.8]
+          duration_s: [0.2, 0.8]
+          ul_bytes: [300, 1500]
+          dl_bytes: [1000, 10000]
+    share:
+      transactions:
+        - label: share_api
+          protocol: https
+          start_delay_s: [0.0, 0.3]
+          duration_s: [0.2, 0.8]
+          ul_bytes: [2000, 12000]
+          dl_bytes: [500, 5000]
+        - label: preview_fetch
+          protocol: https
+          start_delay_s: [0.2, 0.8]
+          duration_s: [0.2, 1.0]
+          ul_bytes: [500, 3000]
+          dl_bytes: [5000, 50000]
+        - label: telemetry
+          protocol: https
+          start_delay_s: [0.6, 1.3]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [200, 1000]
+          dl_bytes: [0, 500]
+    repost:
+      transactions:
+        - label: repost_api
+          protocol: https
+          start_delay_s: [0.0, 0.3]
+          duration_s: [0.2, 0.8]
+          ul_bytes: [1500, 10000]
+          dl_bytes: [500, 5000]
+        - label: feed_update
+          protocol: https
+          start_delay_s: [0.2, 0.8]
+          duration_s: [0.3, 1.0]
+          ul_bytes: [500, 2000]
+          dl_bytes: [5000, 50000]
+        - label: telemetry
+          protocol: https
+          start_delay_s: [0.6, 1.3]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [200, 1000]
+          dl_bytes: [0, 500]
+
+  communication:
+    send_text:
+      transactions:
+        - label: message_send
+          protocol: websocket
+          start_delay_s: [0.0, 0.2]
+          duration_s: [0.1, 0.5]
+          ul_bytes: [300, 3000]
+          dl_bytes: [100, 1500]
+        - label: sync
+          protocol: websocket
+          start_delay_s: [0.1, 0.5]
+          duration_s: [0.1, 0.5]
+          ul_bytes: [100, 1000]
+          dl_bytes: [100, 3000]
+    send_images:
+      transactions:
+        - label: image_upload
+          protocol: https
+          start_delay_s: [0.0, 0.4]
+          duration_s: [1.0, 5.0]
+          ul_bytes: [200000, 5000000]
+          dl_bytes: [1000, 20000]
+        - label: sync
+          protocol: websocket
+          start_delay_s: [0.5, 2.0]
+          duration_s: [0.1, 0.6]
+          ul_bytes: [300, 2000]
+          dl_bytes: [500, 5000]
+    send_videos:
+      transactions:
+        - label: video_upload
+          protocol: https
+          start_delay_s: [0.0, 0.5]
+          duration_s: [3.0, 20.0]
+          ul_bytes: [5000000, 50000000]
+          dl_bytes: [5000, 100000]
+        - label: processing_status
+          protocol: https
+          start_delay_s: [1.0, 4.0]
+          duration_s: [0.5, 2.0]
+          ul_bytes: [500, 3000]
+          dl_bytes: [1000, 20000]
+        - label: sync
+          protocol: websocket
+          start_delay_s: [2.0, 6.0]
+          duration_s: [0.1, 0.6]
+          ul_bytes: [300, 2000]
+          dl_bytes: [500, 5000]
+    send_voice:
+      transactions:
+        - label: voice_upload
+          protocol: https
+          start_delay_s: [0.0, 0.3]
+          duration_s: [0.5, 3.0]
+          ul_bytes: [50000, 800000]
+          dl_bytes: [500, 10000]
+        - label: sync
+          protocol: websocket
+          start_delay_s: [0.4, 1.2]
+          duration_s: [0.1, 0.6]
+          ul_bytes: [200, 1500]
+          dl_bytes: [300, 5000]
+
+  game:
+    loading:
+      transactions:
+        - label: auth_config
+          protocol: https
+          start_delay_s: [0.0, 0.5]
+          duration_s: [0.5, 2.0]
+          ul_bytes: [1000, 10000]
+          dl_bytes: [10000, 100000]
+        - label: asset_fetch
+          protocol: https
+          start_delay_s: [0.5, 2.0]
+          duration_s: [2.0, 15.0]
+          ul_bytes: [1000, 10000]
+          dl_bytes: [500000, 10000000]
+        - label: telemetry
+          protocol: https
+          start_delay_s: [1.0, 3.0]
+          duration_s: [0.1, 0.5]
+          ul_bytes: [300, 2000]
+          dl_bytes: [0, 1000]
+    entering:
+      transactions:
+        - label: session_setup
+          protocol: https
+          start_delay_s: [0.0, 0.5]
+          duration_s: [0.5, 3.0]
+          ul_bytes: [5000, 50000]
+          dl_bytes: [10000, 200000]
+        - label: state_sync
+          protocol: https
+          start_delay_s: [0.4, 1.2]
+          duration_s: [0.5, 3.0]
+          ul_bytes: [1000, 10000]
+          dl_bytes: [10000, 200000]
+    matching:
+      transactions:
+        - label: match_request
+          protocol: websocket
+          start_delay_s: [0.0, 0.3]
+          duration_s: [0.1, 0.5]
+          ul_bytes: [1000, 5000]
+          dl_bytes: [500, 5000]
+        - label: match_polling
+          protocol: websocket
+          start_delay_s: [0.3, 0.8]
+          duration_s: [0.1, 0.5]
+          ul_bytes: [500, 3000]
+          dl_bytes: [500, 10000]
+          repeat_count: [3, 10]
+          repeat_interval_s: [0.5, 2.0]
+    gaming:
+      transactions:
+        - label: gameplay_update
+          protocol: udp_like
+          start_delay_s: [0.0, 0.2]
+          duration_s: [0.02, 0.2]
+          ul_bytes: [100, 1500]
+          dl_bytes: [100, 3000]
+          repeat_count: [20, 100]
+          repeat_interval_s: [0.05, 0.3]
+        - label: heartbeat
+          protocol: udp_like
+          start_delay_s: [0.5, 1.5]
+          duration_s: [0.05, 0.3]
+          ul_bytes: [200, 1000]
+          dl_bytes: [100, 1000]
+          repeat_count: [2, 10]
+          repeat_interval_s: [1.0, 5.0]

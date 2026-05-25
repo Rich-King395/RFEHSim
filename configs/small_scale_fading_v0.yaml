@@ -1,0 +1,53 @@
+simulation:
+  duration_s: 180.0
+  dt_s: 0.001
+  seed: 42
+
+scenario:
+  app_id: "video_app"
+  action_id: "play_video"
+  distance_m: 0.5
+  frequency_hz: 2.437e9
+
+app_traffic:
+  repeat_mode: "periodic"
+  period_s: 5.0
+  jitter_s: 0.2
+  start_offset_s: 0.0
+  repeat_until_end: true
+
+transmitter:
+  default_eirp_dbm: 15.0
+
+channel:
+  path_loss_exponent: 2.2
+  reference_distance_m: 1.0
+  shadowing_db: 0.0
+  ambient_power_dbm: -30.0
+  small_scale:
+    enabled: true
+    model: "rician"
+    k_factor_db: 6.0
+    coherence_time_s: 0.2
+    doppler_hz:
+    normalize_mean: true
+    per_source_independent: true
+    random_phase: true
+
+harvester:
+  capacitance_f: 0.0022
+  initial_v_cap: 0.64
+  eta_model: "constant"
+  eta_constant: 0.50
+  leakage_w: 1.0e-7
+  max_v_cap: 0.66
+  boost:
+    enabled: true
+    v_on: 0.66
+    v_off: 0.64
+    output_voltage_v: 3.3
+    load_power_w: 5.0e-5
+    efficiency: 0.85
+    quiescent_power_on_w: 1.0e-6
+    quiescent_power_off_w: 1.0e-7
+

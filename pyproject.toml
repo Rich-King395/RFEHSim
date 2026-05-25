@@ -1,0 +1,17 @@
+[project]
+name = "rfeh-sim"
+version = "0.1.0"
+description = "A v0 RF energy harvesting side-channel simulator."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pyyaml",
+    "pytest",
+    "matplotlib",
+    "pandas",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
