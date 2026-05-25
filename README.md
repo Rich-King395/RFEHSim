@@ -641,45 +641,6 @@ Where:
 - If `per_source_independent=false`, all sources share one trace.
 - AP downlink events targeting different phones share AP fading because their `source_id` is the same AP ID.
 
-### Channel Configuration Fields
-
-Channel fields loaded by `rfeh_sim/config.py`:
-
-- `channel.path_loss_exponent`
-- `channel.reference_distance_m`
-- `channel.shadowing_db`
-- `channel.ambient_power_dbm`
-- `channel.small_scale.enabled`
-- `channel.small_scale.model`
-- `channel.small_scale.k_factor_db`
-- `channel.small_scale.coherence_time_s`
-- `channel.small_scale.doppler_hz`
-- `channel.small_scale.normalize_mean`
-- `channel.small_scale.per_source_independent`
-- `channel.small_scale.random_phase`
-
-Scenario fields used by the channel:
-
-- `scenario.frequency_hz`
-- `scenario.distance_m`
-- `scenario.mobile_distance_m`
-- `scenario.ap_distance_m`
-- `scenario.source_distances_m`
-- `scenario.mobile_devices[].distance_m`
-- `scenario.ap.distance_m`
-
-### Channel Limitations
-
-Current channel limitations:
-
-- No Fresnel model.
-- No human movement model.
-- No explicit transmitter/receiver coordinate geometry beyond scalar source-to-receiver distances.
-- No coherent phase-level summation across transmitters.
-- No frequency-selective fading.
-- No multipath geometry model.
-- Shadowing is a deterministic configured dB offset, not a random spatial process.
-
 ## Receiver Model
 
 The receiver and storage-capacitor model is implemented in `rfeh_sim/harvester.py`. The engine calls `simulate_vcap(received_power_w, dt_s, harvester_config)` with the total receiver-collected RF power trace from the channel.
@@ -711,16 +672,9 @@ Only one RF-to-DC efficiency model is implemented:
 
 If `harvester.eta_model` is not `"constant"`, `simulate_vcap(...)` raises `NotImplementedError`.
 
-The following models are not implemented in the current repository:
-
-- logistic efficiency
-- voltage-derated efficiency
-- LUT-based efficiency
-- hardware-calibrated nonlinear rectifier model
-
 ### Capacitor Energy Update
 
-The storage capacitor is updated in energy, not by direct linear voltage increments.
+The storage capacitor is updated in energy, not by direct linear increments in voltage.
 
 Initial energy:
 
@@ -770,7 +724,7 @@ Where:
 
 ### V_CAP Computation
 
-At each sample, capacitor voltage is computed from stored energy:
+At each sample, the capacitor voltage is computed from stored energy:
 
 $$
 V_{\mathrm{CAP}}[k] =
@@ -844,15 +798,6 @@ The boost state changes the draw power used in the energy update. The implementa
 
 `harvester.boost.output_voltage_v` is validated when boost is enabled, but the current model does not simulate a separate `V_OUT` trace.
 
-### Measurement Model
-
-No separate measurement model is implemented. The repository does not currently model:
-
-- ADC quantization
-- measurement noise
-- moving-average smoothing
-- a receiver sampling rate separate from `simulation.dt_s`
-
 ### Receiver Outputs
 
 `simulate_vcap(...)` returns:
@@ -876,36 +821,3 @@ No separate measurement model is implemented. The repository does not currently 
 `boost_state` is available in `SimResult`, but it is not written to `trace.csv` by the current default output utility. The default example writes `vcap.png`; a `save_boost_state_plot(...)` helper exists in `rfeh_sim/plotting.py`, but `examples/run_v0.py` does not currently call it.
 
 No `eta_rf` trace is stored in `SimResult` or written to CSV.
-
-### Receiver Configuration Fields
-
-Harvester fields loaded by `rfeh_sim/config.py`:
-
-- `harvester.capacitance_f`
-- `harvester.initial_v_cap`
-- `harvester.eta_model`
-- `harvester.eta_constant`
-- `harvester.leakage_w`
-- `harvester.max_v_cap`
-
-Boost/load fields:
-
-- `harvester.boost.enabled`
-- `harvester.boost.v_on`
-- `harvester.boost.v_off`
-- `harvester.boost.output_voltage_v`
-- `harvester.boost.load_power_w`
-- `harvester.boost.efficiency`
-- `harvester.boost.quiescent_power_on_w`
-- `harvester.boost.quiescent_power_off_w`
-
-### Receiver Limitations
-
-Current receiver limitations:
-
-- Only constant RF-to-DC efficiency is implemented.
-- No nonlinear rectifier, voltage-derated efficiency, or LUT-based efficiency model.
-- No measured hardware calibration data.
-- No separate boost-converter output voltage dynamics.
-- No ADC, quantization, measurement-noise, or smoothing model.
-- The boost/load model is a simplified threshold-controlled load draw, not a detailed converter circuit model.
